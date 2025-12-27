@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analyse des Données - Entreprises du Congo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: { slate: { 850: '#1a2332', 900: '#0f172a', 950: '#0a1120' }, congo: { green: '#228B22' } } } }
+    }
+  </script>
+</head>
+<body class="bg-slate-950 text-slate-200 min-h-screen">
+
+  <div class="flex">
+    <aside class="w-64 bg-slate-900 h-screen sticky top-0 border-r border-slate-800 p-6 flex flex-col">
+      <h1 class="text-white font-bold text-xl mb-8"><i class="fa-solid fa-chart-pie mr-2 text-congo-green"></i>Analytics</h1>
+      <nav class="space-y-4">
+        <a href="index.html" class="flex items-center text-slate-400 hover:text-white transition-colors">
+          <i class="fa-solid fa-table-list mr-3"></i> Annuaire
+        </a>
+        <a href="stats.html" class="flex items-center text-congo-green font-bold">
+          <i class="fa-solid fa-chart-line mr-3"></i> Statistiques
+        </a>
+      </nav>
+    </aside>
+
+    <main class="flex-1 p-8">
+      <header class="mb-10">
+        <h2 class="text-3xl font-bold text-white">Visualisation des Données</h2>
+        <p class="text-slate-400">Analyse globale des entreprises enregistrées au Congo</p>
+      </header>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+          <h3 class="text-lg font-semibold mb-4 text-white">Entreprises par Département</h3>
+          <canvas id="deptChart"></canvas>
+        </div>
+
+        <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 text-center">
+          <h3 class="text-lg font-semibold mb-4 text-white">Répartition par Secteur</h3>
+          <div class="max-w-[300px] mx-auto">
+            <canvas id="sectorChart"></canvas>
+          </div>
+        </div>
+
+        <div class="lg:col-span-2 bg-slate-900 p-6 rounded-2xl border border-slate-800">
+          <h3 class="text-lg font-semibold mb-4 text-white">Évolution des Créations d'Entreprises</h3>
+          <canvas id="timeChart" height="100"></canvas>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // Le mapping doit être identique à index.html
+    const mapping = {
+      date: 'Date_creation',
+      dept: 'Departement',
+      secteur: 'SecteurActivite'
+    };
+
+    async function loadAndAnalyze() {
+      const files = ['data/Brazzaville.csv', 'data/Pool.csv', 'data/Likouala.csv']; // Ajoutez les autres
+      const promises = files.map(file => new Promise(resolve => {
+        Papa.parse(file, { download: true, header: true, skipEmptyLines: true, complete: res => resolve(res.data) });
+      }));
+
+      const results = await Promise.all(promises);
+      const allData = results.flat();
+      
+      generateCharts(allData);
+    }
+
+    function generateCharts(data) {
+      const deptCounts = {};
+      const sectorCounts = {};
+      const yearCounts = {};
+
+      data.forEach(item => {
+        // Stats Départements
+        const d = item[mapping.dept]?.toUpperCase().trim() || 'AUTRES';
+        deptCounts[d] = (deptCounts[d] || 0) + 1;
+
+        // Stats Secteurs
+        const s = item[mapping.secteur] || 'Non défini';
+        sectorCounts[s] = (sectorCounts[s] || 0) + 1;
+
+        // Stats Années
+        if (item[mapping.date]) {
+          const year = item[mapping.date].substring(0, 4);
+          if (year > 1900 && year < 2026) {
+            yearCounts[year] = (yearCounts[year] || 0) + 1;
+          }
+        }
+      });
+
+      // 1. Graphique Barres (Départements)
+      new Chart(document.getElementById('deptChart'), {
+        type: 'bar',
+        data: {
+          labels: Object.keys(deptCounts),
+          datasets: [{ label: 'Entreprises', data: Object.values(deptCounts), backgroundColor: '#228B22' }]
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#1e293b' } } } }
+      });
+
+      // 2. Graphique Doughnut (Secteurs)
+      new Chart(document.getElementById('sectorChart'), {
+        type: 'doughnut',
+        data: {
+          labels: Object.keys(sectorCounts),
+          datasets: [{ data: Object.values(sectorCounts), backgroundColor: ['#228B22', '#3b82f6', '#f59e0b', '#ef4444'] }]
+        }
+      });
+
+      // 3. Graphique Ligne (Temps)
+      const sortedYears = Object.keys(yearCounts).sort();
+      new Chart(document.getElementById('timeChart'), {
+        type: 'line',
+        data: {
+          labels: sortedYears,
+          datasets: [{ 
+            label: 'Créations par année', 
+            data: sortedYears.map(y => yearCounts[y]), 
+            borderColor: '#228B22', 
+            tension: 0.3,
+            fill: true,
+            backgroundColor: 'rgba(34, 139, 34, 0.1)'
+          }]
+        }
+      });
+    }
+
+    loadAndAnalyze();
+  </script>
+</body>
+</html>

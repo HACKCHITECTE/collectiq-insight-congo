@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Congo Analytics - Big Data Visualisation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: { slate: { 850: '#1a2332', 900: '#0f172a' }, congo: { green: '#228B22' } } } }
+        }
+    </script>
+    <style>
+        .active-tab { background: rgba(34, 139, 34, 0.15); color: white; border-left: 4px solid #228B22; }
+        .chart-card { background: #0f172a; border: 1px solid #1e293b; border-radius: 1rem; padding: 1.5rem; height: 450px; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200">
+    <div class="flex h-screen overflow-hidden">
+        <aside class="w-72 bg-slate-900 border-r border-slate-800 flex flex-col">
+            <div class="p-6 border-b border-slate-800 flex flex-col items-center">
+                <div class="w-16 h-16 bg-white rounded-xl mb-4 flex items-center justify-center shadow-lg shadow-congo-green/20">
+                    <img src="logo.jpg" alt="CollectIQ" class="w-12 h-12 object-contain">
+                </div>
+                <h1 class="font-bold text-white text-lg tracking-tight text-center">CollectIQ Analytics</h1>
+                <p class="text-[10px] text-slate-500 uppercase tracking-widest text-center mt-1">Intelligence Économique</p>
+              </div>
+            <nav class="flex-1 overflow-y-auto p-4 space-y-1">
+                <button onclick="switchTab('temporel', this)" class="tab-btn active-tab w-full text-left px-4 py-3 rounded-lg text-sm flex items-center"><i class="fa-solid fa-calendar-days mr-3"></i> 1. Temporel</button>
+                <button onclick="switchTab('demog', this)" class="tab-btn w-full text-left px-4 py-3 rounded-lg text-sm flex items-center text-slate-400 hover:text-white"><i class="fa-solid fa-users mr-3"></i> 2. Démographie</button>
+                <button onclick="switchTab('juridique', this)" class="tab-btn w-full text-left px-4 py-3 rounded-lg text-sm flex items-center text-slate-400 hover:text-white"><i class="fa-solid fa-gavel mr-3"></i> 3. Juridique</button>
+                <button onclick="switchTab('sectoriel', this)" class="tab-btn w-full text-left px-4 py-3 rounded-lg text-sm flex items-center text-slate-400 hover:text-white"><i class="fa-solid fa-briefcase mr-3"></i> 4. Sectoriel</button>
+                <button onclick="switchTab('geo', this)" class="tab-btn w-full text-left px-4 py-3 rounded-lg text-sm flex items-center text-slate-400 hover:text-white"><i class="fa-solid fa-map-location-dot mr-3"></i> 5. Géographie</button>
+                <button onclick="switchTab('reseaux', this)" class="tab-btn w-full text-left px-4 py-3 rounded-lg text-sm flex items-center text-slate-400 hover:text-white"><i class="fa-solid fa-circle-nodes mr-3"></i> 6. Réseaux</button>
+                <button onclick="switchTab('qualite', this)" class="tab-btn w-full text-left px-4 py-3 rounded-lg text-sm flex items-center text-slate-400 hover:text-white"><i class="fa-solid fa-clipboard-check mr-3"></i> 7. Qualité Data</button>
+                <button onclick="switchTab('business', this)" class="tab-btn w-full text-left px-4 py-3 rounded-lg text-sm flex items-center text-amber-500 hover:text-amber-400 font-bold"><i class="fa-solid fa-rocket mr-3"></i> 8. Business & Marketing</button>
+                <button onclick="switchTab('dashboards', this)" class="tab-btn w-full text-left px-4 py-3 rounded-lg text-sm flex items-center text-blue-400 hover:text-blue-300 font-bold"><i class="fa-solid fa-gauge-high mr-3"></i> 9. Synthèse</button>
+            </nav>
+            <div class="p-4 border-t border-slate-800">
+                <a href="index.html" class="block w-full text-center py-2 bg-slate-800 rounded-lg text-xs hover:bg-slate-700 transition">Retour au Répertoire</a>
+            </div>
+            <div class="p-6 border-t border-slate-800">
+                <p class="text-[10px] text-slate-500 text-center leading-relaxed">
+                    © Copyright <span class="text-white font-semibold">CollectIQ</span>. 
+                    Tous Droits Réservés
+                </p>
+            </div>
+        </aside>
+
+        <main class="flex-1 flex flex-col min-w-0">
+            <header class="h-16 border-b border-slate-800 flex items-center justify-between px-8 bg-slate-900/50">
+                <h2 id="currentTabTitle" class="font-semibold text-white">Analyse Temporelle</h2>
+                <div id="loader" class="text-xs text-congo-green animate-pulse hidden">Traitement des données...</div>
+            </header>
+            
+            <div id="dashboardGrid" class="flex-1 p-8 overflow-y-auto grid grid-cols-1 xl:grid-cols-2 gap-8">
+                </div>
+        </main>
+    </div>
+
+    <script>
+        // --- LOGIQUE JAVASCRIPT ---
+        let allData = [];
+        const mapping = {
+            id: 'N',
+            name: 'Raison_sociale',
+            date: 'Date_creation',
+            genre: 'Genre',
+            nat: 'Nationalite',
+            secteur: 'SecteurActivite',
+            formJ: 'FormJ',
+            formeJuri: 'Formejuridique1',
+            tel: 'Telephone1',
+            mail: 'Mail',
+            dept: 'Departement',
+            localite: 'Localite',
+            arrondissement: 'Arrondissement',
+            branche: 'Branche_Activiteprincipale'
+        };
+
+        async function loadData() {
+            showLoader(true);
+            const files = ['data/Brazzaville.csv','data/Cuvette-O.csv', 'data/Kouilou.csv', 'data/Lekoumou.csv', 'data/Likouala.csv', 'data/Niari.csv', 'data/Plateaux.csv', 'data/Pool.csv'];
+            const promises = files.map(file => new Promise(resolve => {
+                Papa.parse(file, {
+                    download: true, header: true, skipEmptyLines: true, encoding: "ISO-8859-1",
+                    complete: res => resolve(res.data)
+                });
+            }));
+            const results = await Promise.all(promises);
+            allData = results.flat().filter(d => d[mapping.name]);
+            showLoader(false);
+            switchTab('temporel', document.querySelector('.tab-btn')); // Lancement initial
+        }
+
+        function showLoader(show) {
+            document.getElementById('loader').classList.toggle('hidden', !show);
+        }
+
+        // --- MOTEUR DE RENDU ---
+        function switchTab(tabId, btn) {
+            // UI Update
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active-tab'));
+            btn.classList.add('active-tab');
+            document.getElementById('currentTabTitle').textContent = btn.innerText;
+
+            const grid = document.getElementById('dashboardGrid');
+            grid.innerHTML = ""; // Vider la grille
+
+            if(tabId === 'temporel') renderPoint1();
+            if(tabId === 'demog') renderPoint2();
+            if(tabId === 'juridique') renderPoint3();
+            if(tabId === 'sectoriel') renderPoint4();
+            if(tabId === 'geo') renderPoint5();
+            if(tabId === 'reseaux') renderPoint6();
+            if(tabId === 'qualite') renderPoint7();
+            if(tabId === 'business') renderPoint8();
+            if(tabId === 'dashboards') renderPoint9();
+            
+        }
+
+        // --- POINT 1 : TEMPOREL ---
+        function renderPoint1() {
+            const container = document.getElementById('dashboardGrid');
+            
+            // Préparation des données
+            const years = {};
+            allData.forEach(d => {
+                const y = new Date(d[mapping.date]).getFullYear();
+                if(y > 1900 && y < 2026) years[y] = (years[y] || 0) + 1;
+            });
+            const sortedYears = Object.keys(years).sort();
+
+            // Graphique 1 : Line Chart
+            addChartCard('evolutionAnnuelle', 'Évolution annuelle des créations');
+            Plotly.newPlot('evolutionAnnuelle', [{
+                x: sortedYears, y: sortedYears.map(y => years[y]),
+                type: 'scatter', mode: 'lines+markers', line: { color: '#228B22', shape: 'spline' },
+                fill: 'tozeroy'
+            }], getLayout());
+
+            // Graphique 2 : Bar Chart
+            addChartCard('barAnnuelle', 'Répartition par année');
+            Plotly.newPlot('barAnnuelle', [{
+                x: sortedYears, y: sortedYears.map(y => years[y]),
+                type: 'bar', marker: { color: '#2da32d' }
+            }], getLayout());
+        }
+
+        // --- POINT 8 : BUSINESS & MARKETING ---
+function renderPoint8() {
+    const container = document.getElementById('dashboardGrid');
+    
+    // --- 1. Préparation des données de contactabilité ---
+    const sectorProspection = {};
+    const arrProspection = {};
+    
+    allData.forEach(d => {
+        const branch = d[mapping.branche] || 'Inconnu';
+        const arr = d[mapping.arrondissement] || d[mapping.localite] || 'Inconnu';
+        const hasTel = (d[mapping.tel] && d[mapping.tel].toString().length > 5) ? 1 : 0;
+
+        // Stats par Secteur
+        if (!sectorProspection[branch]) sectorProspection[branch] = { total: 0, contacts: 0 };
+        sectorProspection[branch].total++;
+        sectorProspection[branch].contacts += hasTel;
+
+        // Stats par Arrondissement
+        if (!arrProspection[arr]) arrProspection[arr] = { total: 0, contacts: 0 };
+        arrProspection[arr].total++;
+        arrProspection[arr].contacts += hasTel;
+    });
+
+    // --- Graphique 1 : Entonnoir (Funnel) de Prospection ---
+    const total = allData.length;
+    const withTel = allData.filter(d => d[mapping.tel] && d[mapping.tel].length > 5).length;
+    const withMail = allData.filter(d => d[mapping.mail] && d[mapping.mail].includes('@')).length;
+    const qualified = allData.filter(d => (d[mapping.tel] && d[mapping.tel].length > 5) && (d[mapping.mail] && d[mapping.mail].includes('@'))).length;
+
+    addChartCard('funnelBusiness', 'Potentiel de Conversion Marketing');
+    Plotly.newPlot('funnelBusiness', [{
+        type: 'funnel',
+        y: ["Base Totale", "Cibles avec Téléphone", "Cibles avec Email", "Cibles Haute Qualité (Les 2)"],
+        x: [total, withTel, withMail, qualified],
+        textinfo: "value+percent initial",
+        marker: { color: ["#1e293b", "#228B22", "#3b82f6", "#f59e0b"] }
+    }], getLayout());
+
+    // --- Graphique 2 : Secteurs les plus "Appelables" (Top 10) ---
+    const sortedSectors = Object.entries(sectorProspection)
+        .sort((a,b) => b[1].contacts - a[1].contacts)
+        .slice(0, 10);
+
+    addChartCard('contactableSectors', 'Top 10 Secteurs par Potentiel Téléphonique');
+    Plotly.newPlot('contactableSectors', [
+        {
+            x: sortedSectors.map(s => s[0]),
+            y: sortedSectors.map(s => s[1].total),
+            name: 'Total Entreprises',
+            type: 'bar',
+            marker: { color: '#1e293b' }
+        },
+        {
+            x: sortedSectors.map(s => s[0]),
+            y: sortedSectors.map(s => s[1].contacts),
+            name: 'Avec Téléphone',
+            type: 'bar',
+            marker: { color: '#228B22' }
+        }
+    ], { ...getLayout(), barmode: 'group' });
+
+    // --- Graphique 3 : Treemap d'Opportunités par Zone ---
+    const treeData = { labels: [], parents: [], values: [] };
+    sortedSectors.forEach(s => {
+        treeData.labels.push(s[0]);
+        treeData.parents.push("");
+        treeData.values.push(s[1].contacts);
+    });
+
+    addChartCard('opportunityTree', 'Carte des Opportunités (Secteurs rattachés aux contacts valides)');
+    Plotly.newPlot('opportunityTree', [{
+        type: "treemap",
+        labels: treeData.labels,
+        parents: treeData.parents,
+        values: treeData.values,
+        textinfo: "label+value",
+        marker: { colorscale: 'Greens' }
+    }], getLayout());
+
+    // --- Graphique 4 : Zones Géographiques à fort potentiel ---
+    const topZones = Object.entries(arrProspection)
+        .sort((a,b) => b[1].contacts - a[1].contacts)
+        .slice(0, 10);
+
+    addChartCard('zoneBusiness', 'Top 10 Localités pour la Prospection Terrain');
+    Plotly.newPlot('zoneBusiness', [{
+        x: topZones.map(z => z[0]),
+        y: topZones.map(z => z[1].contacts),
+        type: 'bar',
+        marker: { color: '#f59e0b' }
+    }], getLayout());
+}
+
+        // --- HELPERS ---
+        function addChartCard(id, title) {
+            const grid = document.getElementById('dashboardGrid');
+            grid.innerHTML += `
+                <div class="chart-card">
+                    <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-4">${title}</h3>
+                    <div id="${id}" class="w-full h-full"></div>
+                </div>`;
+        }
+
+        function getLayout() {
+            return {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { t: 10, b: 40, l: 40, r: 10 },
+                font: { color: '#94a3b8', size: 10 },
+                xaxis: { gridcolor: '#1e293b', zeroline: false },
+                yaxis: { gridcolor: '#1e293b', zeroline: false }
+            };
+        }
+
+        window.onload = loadData;
+
+        function renderPoint2() {
+    // Calcul Genre
+    const genres = { Homme: 0, Femme: 0 };
+    allData.forEach(d => { if(d[mapping.genre]) genres[d[mapping.genre]]++; });
+
+    addChartCard('genrePie', 'Répartition par Genre');
+    Plotly.newPlot('genrePie', [{
+        values: Object.values(genres),
+        labels: Object.keys(genres),
+        type: 'pie',
+        marker: { colors: ['#3b82f6', '#ec4899'] },
+        hole: .4
+    }], getLayout());
+
+    // Top Nationalités
+    const nats = {};
+    allData.forEach(d => { const n = d[mapping.nat] || 'Inconnue'; nats[n] = (nats[n] || 0) + 1; });
+    const topNats = Object.entries(nats).sort((a,b) => b[1] - a[1]).slice(0, 10);
+
+    addChartCard('natBar', 'Top 10 Nationalités des Promoteurs');
+    Plotly.newPlot('natBar', [{
+        x: topNats.map(n => n[0]),
+        y: topNats.map(n => n[1]),
+        type: 'bar',
+        marker: { color: '#228B22' }
+    }], getLayout());
+}
+
+function renderPoint3() {
+    const container = document.getElementById('dashboardGrid');
+    
+    // --- Préparation des données ---
+    const counts = {};
+    const timeData = {}; 
+    const crossSector = {}; 
+
+    allData.forEach(d => {
+        // CORRECTION ICI : Utilisation des clés en minuscules comme dans votre mapping
+        const fj = d[mapping.formJ] || 'N/A'; 
+        const sec = d[mapping.secteur] || 'Inconnu';
+        const rawDate = d[mapping.date];
+        const year = rawDate ? new Date(rawDate).getFullYear() : null;
+
+        // Count simple
+        counts[fj] = (counts[fj] || 0) + 1;
+
+        // Évolution temporelle
+        if (year && year > 2010 && year < 2026) {
+            if (!timeData[year]) timeData[year] = {};
+            timeData[year][fj] = (timeData[year][fj] || 0) + 1;
+        }
+
+        // Croisement Secteur
+        if (!crossSector[sec]) crossSector[sec] = {};
+        crossSector[sec][fj] = (crossSector[sec][fj] || 0) + 1;
+    });
+
+    const sortedFj = Object.entries(counts).sort((a,b) => b[1] - a[1]);
+
+    // --- 1. Pie Chart ---
+    addChartCard('juridiquePie', 'Répartition des Formes Juridiques');
+    Plotly.newPlot('juridiquePie', [{
+        values: sortedFj.map(f => f[1]),
+        labels: sortedFj.map(f => f[0]),
+        type: 'pie',
+        textinfo: 'percent+label',
+        hole: 0.4,
+        marker: { colors: ['#228B22', '#1a6b1a', '#2da32d', '#3b82f6', '#f59e0b'] }
+    }], getLayout());
+
+    // --- 2. Treemap ---
+    addChartCard('juridiqueTree', 'Hiérarchie des Structures');
+    Plotly.newPlot('juridiqueTree', [{
+        type: "treemap",
+        labels: sortedFj.map(f => f[0]),
+        parents: sortedFj.map(() => ""),
+        values: sortedFj.map(f => f[1]),
+        textinfo: "label+value",
+        marker: { colorscale: 'Greens' }
+    }], getLayout());
+
+    // --- 3. Stacked Bar (Croisement) ---
+    addChartCard('juridiqueSecteur', 'Répartition Juridique par Secteur');
+    const sectors = Object.keys(crossSector).filter(s => s !== 'Inconnu');
+    const traces = sortedFj.slice(0, 5).map(fj => ({
+        x: sectors,
+        y: sectors.map(s => crossSector[s][fj[0]] || 0),
+        name: fj[0],
+        type: 'bar'
+    }));
+    Plotly.newPlot('juridiqueSecteur', traces, { ...getLayout(), barmode: 'stack' });
+
+    // --- 4. Line Chart (Évolution) ---
+    addChartCard('juridiqueTime', 'Évolution des créations par Type');
+    const years = Object.keys(timeData).sort();
+    const timeTraces = sortedFj.slice(0, 4).map(fj => ({
+        x: years,
+        y: years.map(y => timeData[y][fj[0]] || 0),
+        name: fj[0],
+        mode: 'lines',
+        line: { shape: 'spline' }
+    }));
+    Plotly.newPlot('juridiqueTime', timeTraces, getLayout());
+}
+
+function renderPoint4() {
+    const container = document.getElementById('dashboardGrid');
+    
+    // --- Préparation des données ---
+    const sectorCounts = {};
+    const branchCounts = {};
+    const sectorTime = {};
+    const hierarchy = { labels: [], parents: [], values: [] };
+
+    allData.forEach(d => {
+        const sec = d[mapping.secteur] || 'Inconnu';
+        const bra = d[mapping.branche] || 'Non spécifié';
+        const rawDate = d[mapping.date];
+        const year = rawDate ? new Date(rawDate).getFullYear() : null;
+
+        // Counts
+        sectorCounts[sec] = (sectorCounts[sec] || 0) + 1;
+        branchCounts[bra] = (branchCounts[bra] || 0) + 1;
+
+        // Évolution
+        if (year && year > 2010 && year < 2026) {
+            if (!sectorTime[year]) sectorTime[year] = {};
+            sectorTime[year][sec] = (sectorTime[year][sec] || 0) + 1;
+        }
+    });
+
+    // --- 1. Bar Chart : Répartition par Secteur ---
+    addChartCard('sectorBar', 'Volume par Secteur d\'Activité');
+    const sortedSec = Object.entries(sectorCounts).sort((a,b) => b[1] - a[1]);
+    Plotly.newPlot('sectorBar', [{
+        x: sortedSec.map(s => s[0]),
+        y: sortedSec.map(s => s[1]),
+        type: 'bar',
+        marker: { color: '#228B22' }
+    }], getLayout());
+
+    // --- 2. Pie Chart : Poids Relatif ---
+    addChartCard('sectorPie', 'Poids des Secteurs (%)');
+    Plotly.newPlot('sectorPie', [{
+        values: sortedSec.map(s => s[1]),
+        labels: sortedSec.map(s => s[0]),
+        type: 'pie',
+        hole: 0.4
+    }], getLayout());
+
+    // --- 3. Treemap : Hiérarchie Secteur -> Branche ---
+    // On construit les parents (secteurs) puis les enfants (branches)
+    const treeData = { labels: [], parents: [], values: [] };
+    
+    // Ajouter les secteurs
+    sortedSec.forEach(s => {
+        treeData.labels.push(s[0]);
+        treeData.parents.push("");
+        treeData.values.push(s[1]);
+    });
+
+    // Ajouter le Top 15 des branches rattachées aux secteurs
+    const topBranches = Object.entries(branchCounts).sort((a,b) => b[1] - a[1]).slice(0, 15);
+    topBranches.forEach(b => {
+        // On cherche le secteur correspondant pour cette branche (premier trouvé)
+        const sample = allData.find(d => d[mapping.branche] === b[0]);
+        const parentSec = sample ? sample[mapping.secteur] : "Inconnu";
+        
+        treeData.labels.push(b[0]);
+        treeData.parents.push(parentSec);
+        treeData.values.push(b[1]);
+    });
+
+    addChartCard('sectorTree', 'Hiérarchie : Secteurs et Top Branches');
+    Plotly.newPlot('sectorTree', [{
+        type: "treemap",
+        labels: treeData.labels,
+        parents: treeData.parents,
+        values: treeData.values,
+        textinfo: "label+value+percent parent",
+        marker: { colorscale: 'Greens' }
+    }], getLayout());
+
+    // --- 4. Line Chart : Évolution temporelle ---
+    addChartCard('sectorEvolution', 'Évolution des Secteurs dans le temps');
+    const years = Object.keys(sectorTime).sort();
+    const traces = sortedSec.slice(0, 3).map(s => ({
+        x: years,
+        y: years.map(y => sectorTime[y][s[0]] || 0),
+        name: s[0],
+        mode: 'lines',
+        line: { shape: 'spline' }
+    }));
+    Plotly.newPlot('sectorEvolution', traces, getLayout());
+}
+
+function renderPoint5() {
+    const container = document.getElementById('dashboardGrid');
+    
+    // --- Préparation des données ---
+    const deptCounts = {};
+    const arrondCounts = {};
+    const geoTime = {}; // Pour l'évolution par arrondissement
+    const treeData = { labels: [], parents: [], values: [] };
+
+    allData.forEach(d => {
+        const dep = d[mapping.dept] || 'Inconnu';
+        const arr = d[mapping.arrondissement] || d[mapping.localite] || 'Non spécifié';
+        const rawDate = d[mapping.date];
+        const year = rawDate ? new Date(rawDate).getFullYear() : null;
+
+        // Counts
+        deptCounts[dep] = (deptCounts[dep] || 0) + 1;
+        arrondCounts[arr] = (arrondCounts[arr] || 0) + 1;
+
+        // Évolution (Top 5 arrondissements)
+        if (year && year > 2010 && year < 2026) {
+            if (!geoTime[year]) geoTime[year] = {};
+            geoTime[year][arr] = (geoTime[year][arr] || 0) + 1;
+        }
+    });
+
+    const sortedDepts = Object.entries(deptCounts).sort((a,b) => b[1] - a[1]);
+    const sortedArrs = Object.entries(arrondCounts).sort((a,b) => b[1] - a[1]);
+
+    // --- 1. Bar Chart : Top Arrondissements / Localités ---
+    addChartCard('arrBar', 'Top 15 Arrondissements & Localités');
+    const top15Arr = sortedArrs.slice(0, 15);
+    Plotly.newPlot('arrBar', [{
+        x: top15Arr.map(a => a[0]),
+        y: top15Arr.map(a => a[1]),
+        type: 'bar',
+        marker: { color: '#228B22' }
+    }], getLayout());
+
+    // --- 2. Pie Chart : Répartition par Département ---
+    addChartCard('deptPie', 'Poids des Départements');
+    Plotly.newPlot('deptPie', [{
+        values: sortedDepts.map(d => d[1]),
+        labels: sortedDepts.map(d => d[0]),
+        type: 'pie',
+        hole: 0.4,
+        marker: { colors: ['#228B22', '#1a6b1a', '#2da32d', '#3b82f6', '#f59e0b'] }
+    }], getLayout());
+
+    // --- 3. Treemap : Hiérarchie Département -> Arrondissement ---
+    const treeGeo = { labels: [], parents: [], values: [] };
+    
+    // Parents : Départements
+    sortedDepts.forEach(d => {
+        treeGeo.labels.push(d[0]);
+        treeGeo.parents.push("");
+        treeGeo.values.push(d[1]);
+    });
+
+    // Enfants : Top 5 Arrondissements par département
+    sortedDepts.forEach(d => {
+        const deptName = d[0];
+        const subArrs = {};
+        allData.filter(item => item[mapping.dept] === deptName).forEach(item => {
+            const a = item[mapping.Arrondissement] || item[mapping.Localite] || 'Autre';
+            subArrs[a] = (subArrs[a] || 0) + 1;
+        });
+        
+        Object.entries(subArrs).sort((a,b) => b[1] - a[1]).slice(0, 5).forEach(sub => {
+            // Pour éviter les doublons de labels (ex: "Centre" peut exister dans 2 depts)
+            const uniqueLabel = `${sub[0]} (${deptName})`; 
+            treeGeo.labels.push(uniqueLabel);
+            treeGeo.parents.push(deptName);
+            treeGeo.values.push(sub[1]);
+        });
+    });
+
+    addChartCard('geoTree', 'Distribution Géographique (Treemap)');
+    Plotly.newPlot('geoTree', [{
+        type: "treemap",
+        labels: treeGeo.labels,
+        parents: treeGeo.parents,
+        values: treeGeo.values,
+        textinfo: "label+value",
+        marker: { colorscale: 'Greens' }
+    }], getLayout());
+
+    // --- 4. Line Chart : Évolution des zones clés ---
+    addChartCard('geoEvolution', 'Croissance des 5 zones majeures');
+    const years = Object.keys(geoTime).sort();
+    const top5Names = sortedArrs.slice(0, 5).map(a => a[0]);
+    
+    const traces = top5Names.map(name => ({
+        x: years,
+        y: years.map(y => geoTime[y][name] || 0),
+        name: name,
+        mode: 'lines',
+        line: { shape: 'spline' }
+    }));
+    Plotly.newPlot('geoEvolution', traces, getLayout());
+}
+
+function renderPoint6() {
+    const container = document.getElementById('dashboardGrid');
+    
+    // --- 1. Préparation du Diagramme de Sankey (Genre -> FormJ -> Secteur) ---
+    const nodes = [];
+    const links = { source: [], target: [], value: [] };
+
+    function getIndex(name) {
+        let idx = nodes.indexOf(name);
+        if (idx === -1) {
+            nodes.push(name);
+            idx = nodes.length - 1;
+        }
+        return idx;
+    }
+
+    allData.forEach(d => {
+        const g = d[mapping.genre] || 'Inconnu';
+        const fj = d[mapping.formJ] || 'N/A';
+        const s = d[mapping.secteur] || 'Inconnu';
+
+        // Lien Genre -> FormJ
+        const s1 = getIndex(g);
+        const t1 = getIndex(fj);
+        updateLinks(s1, t1);
+
+        // Lien FormJ -> Secteur
+        const s2 = t1;
+        const t2 = getIndex(s);
+        updateLinks(s2, t2);
+    });
+
+    function updateLinks(s, t) {
+        const existing = links.source.findIndex((src, i) => src === s && links.target[i] === t);
+        if (existing !== -1) {
+            links.value[existing]++;
+        } else {
+            links.source.push(s);
+            links.target.push(t);
+            links.value.push(1);
+        }
+    }
+
+    addChartCard('sankeyFlow', 'Flux Structurel : Genre > Forme Juridique > Secteur');
+    Plotly.newPlot('sankeyFlow', [{
+        type: "sankey",
+        node: {
+            pad: 15, thickness: 20,
+            line: { color: "black", width: 0.5 },
+            label: nodes,
+            color: "#228B22"
+        },
+        link: {
+            source: links.source,
+            target: links.target,
+            value: links.value,
+            color: 'rgba(34, 139, 34, 0.2)'
+        }
+    }], getLayout());
+
+    // --- 2. Préparation du Sunburst (Secteur -> Branche -> FormJ) ---
+    const sunData = { labels: ["Congo"], parents: [""], values: [allData.length] };
+    const sunMap = {};
+
+    allData.slice(0, 5000).forEach(d => { // Limité pour la performance
+        const s = d[mapping.secteur] || 'Inconnu';
+        const b = d[mapping.branche] || 'Autre';
+        const f = d[mapping.formJ] || 'N/A';
+
+        const path = [s, b, f];
+        let parent = "Congo";
+        path.forEach(label => {
+            const key = `${parent}/${label}`;
+            if (!sunMap[key]) {
+                sunMap[key] = 0;
+                sunData.labels.push(label);
+                sunData.parents.push(parent);
+            }
+            sunMap[key]++;
+            parent = label;
+        });
+    });
+    
+    // Ajout des valeurs calculées
+    sunData.labels.forEach((l, i) => {
+        if(i > 0) { // On saute le root
+            const key = `${sunData.parents[i]}/${l}`;
+            sunData.values.push(sunMap[key]);
+        }
+    });
+
+    addChartCard('sunburstChart', 'Structure Hiérarchique (Secteur > Branche > Type)');
+    Plotly.newPlot('sunburstChart', [{
+        type: "sunburst",
+        labels: sunData.labels,
+        parents: sunData.parents,
+        values: sunData.values,
+        branchvalues: "total",
+        marker: { colorscale: 'Greens' }
+    }], getLayout());
+}
+
+function renderPoint7() {
+    const container = document.getElementById('dashboardGrid');
+    
+    // --- 1. Calcul global de la complétude par variable ---
+    const variables = [
+        { label: 'Raison Sociale', key: mapping.name },
+        { label: 'Téléphone', key: mapping.tel },
+        { label: 'Email', key: mapping.mail },
+        { label: 'Genre', key: mapping.genre },
+        { label: 'Secteur', key: mapping.secteur },
+        { label: 'Date Création', key: mapping.date },
+        { label: 'Arrondissement', key: mapping.arrondissement }
+    ];
+
+    const statsGlobal = variables.map(v => {
+        const count = allData.filter(d => d[v.key] && d[v.key].toString().trim().length > 0 && d[v.key] !== 'N/A').length;
+        return { label: v.label, percent: (count / allData.length) * 100 };
+    });
+
+    // --- 2. Préparation de la Heatmap (Qualité par Département) ---
+    const depts = [...new Set(allData.map(d => d[mapping.dept] || 'Inconnu'))];
+    const heatmapZ = []; // Matrice des scores
+
+    depts.forEach(dept => {
+        const deptData = allData.filter(d => (d[mapping.dept] || 'Inconnu') === dept);
+        const rowScores = variables.map(v => {
+            const valid = deptData.filter(d => d[v.key] && d[v.key].toString().trim().length > 0).length;
+            return (valid / deptData.length) * 100;
+        });
+        heatmapZ.push(rowScores);
+    });
+
+    // --- Graphique 1 : Bar Chart de Complétude ---
+    addChartCard('qualityBar', 'Taux de remplissage global des champs (%)');
+    Plotly.newPlot('qualityBar', [{
+        x: statsGlobal.map(s => s.label),
+        y: statsGlobal.map(s => s.percent),
+        type: 'bar',
+        text: statsGlobal.map(s => s.percent.toFixed(1) + '%'),
+        textposition: 'auto',
+        marker: {
+            color: statsGlobal.map(s => s.percent > 80 ? '#228B22' : s.percent > 50 ? '#f59e0b' : '#ef4444')
+        }
+    }], getLayout());
+
+    // --- Graphique 2 : Heatmap de Qualité par Département ---
+    addChartCard('qualityHeatmap', 'Score de Qualité : Variables vs Départements');
+    Plotly.newPlot('qualityHeatmap', [{
+        z: heatmapZ,
+        x: variables.map(v => v.label),
+        y: depts,
+        type: 'heatmap',
+        colorscale: [
+            [0, '#ef4444'],   // Rouge (Mauvais)
+            [0.5, '#f59e0b'], // Orange (Moyen)
+            [1, '#228B22']    // Vert (Excellent)
+        ],
+        showscale: true
+    }], getLayout());
+
+    // --- Graphique 3 : Indicateur de Complétude du Contact (Tel vs Mail) ---
+    const contactStats = {
+        'Tel Uniquement': allData.filter(d => d[mapping.tel] && !d[mapping.mail]).length,
+        'Email Uniquement': allData.filter(d => !d[mapping.tel] && d[mapping.mail]).length,
+        'Les Deux': allData.filter(d => d[mapping.tel] && d[mapping.mail]).length,
+        'Aucun': allData.filter(d => !d[mapping.tel] && !d[mapping.mail]).length
+    };
+
+    addChartCard('contactPie', 'Disponibilité des coordonnées de contact');
+    Plotly.newPlot('contactPie', [{
+        values: Object.values(contactStats),
+        labels: Object.keys(contactStats),
+        type: 'pie',
+        marker: { colors: ['#228B22', '#3b82f6', '#f59e0b', '#ef4444'] }
+    }], getLayout());
+}
+
+function renderPoint9() {
+    const container = document.getElementById('dashboardGrid');
+    
+    // --- 1. CALCUL DES KPI ---
+    const total = allData.length;
+    const withTel = allData.filter(d => d[mapping.tel] && d[mapping.tel].length > 5).length;
+    const contactRate = (withTel / total) * 100;
+    
+    // Calcul de la croissance (Entreprises créées en 2024 vs 2023)
+    const currentYear = 2024;
+    const lastYear = 2023;
+    const countCurrent = allData.filter(d => new Date(d[mapping.date]).getFullYear() === currentYear).length;
+    const countLast = allData.filter(d => new Date(d[mapping.date]).getFullYear() === lastYear).length;
+    const growth = ((countCurrent - countLast) / countLast) * 100;
+
+    // --- Graphique 1 : Jauge de Santé de la Base (Contactabilité) ---
+    addChartCard('gaugeContact', 'Santé Commerciale : Taux de Contactabilité');
+    Plotly.newPlot('gaugeContact', [{
+        type: "indicator",
+        mode: "gauge+number",
+        value: contactRate,
+        title: { text: "Score de Prospection (%)", font: { size: 14 } },
+        gauge: {
+            axis: { range: [0, 100] },
+            bar: { color: "#228B22" },
+            steps: [
+                { range: [0, 50], color: "#1e293b" },
+                { range: [50, 80], color: "#1a6b1a" }
+            ],
+            threshold: {
+                line: { color: "white", width: 4 },
+                thickness: 0.75,
+                value: 90
+            }
+        }
+    }], getLayout());
+
+    // --- Graphique 2 : Le "Mix Économique" (Secteur + Genre) ---
+    const mixData = {};
+    allData.forEach(d => {
+        const key = d[mapping.secteur] || 'Autre';
+        if (!mixData[key]) mixData[key] = { Homme: 0, Femme: 0 };
+        if (d[mapping.genre] === 'Homme') mixData[key].Homme++;
+        if (d[mapping.genre] === 'Femme') mixData[key].Femme++;
+    });
+
+    addChartCard('economicMix', 'Mix Économique : Secteur & Genre');
+    const sectors = Object.keys(mixData).slice(0, 5);
+    Plotly.newPlot('economicMix', [
+        { x: sectors, y: sectors.map(s => mixData[s].Homme), name: 'Hommes', type: 'bar', marker: {color: '#3b82f6'} },
+        { x: sectors, y: sectors.map(s => mixData[s].Femme), name: 'Femmes', type: 'bar', marker: {color: '#ec4899'} }
+    ], { ...getLayout(), barmode: 'stack' });
+
+    // --- Graphique 3 : Évolution Comparative (Volume vs Croissance) ---
+    // On réutilise la logique temporelle mais simplifiée
+    const years = [2020, 2021, 2022, 2023, 2024];
+    const countsByYear = years.map(y => allData.filter(d => new Date(d[mapping.date]).getFullYear() === y).length);
+
+    addChartCard('summaryTrend', 'Tendance Globale des Créations (5 dernières années)');
+    Plotly.newPlot('summaryTrend', [{
+        x: years,
+        y: countsByYear,
+        type: 'scatter',
+        mode: 'lines+markers',
+        fill: 'tozeroy',
+        line: { color: '#228B22', width: 4 }
+    }], getLayout());
+
+    // --- Graphique 4 : Synthèse Géographique (Top Départements) ---
+    const depts = {};
+    allData.forEach(d => { const dep = d[mapping.dept] || 'Inconnu'; depts[dep] = (depts[dep] || 0) + 1; });
+    const sortedDepts = Object.entries(depts).sort((a,b) => b[1] - a[1]).slice(0, 5);
+
+    addChartCard('summaryGeo', 'Concentration Économique par Département');
+    Plotly.newPlot('summaryGeo', [{
+        values: sortedDepts.map(d => d[1]),
+        labels: sortedDepts.map(d => d[0]),
+        type: 'pie',
+        hole: 0.6,
+        marker: { colors: ['#228B22', '#2da32d', '#1a6b1a', '#1e293b', '#334155'] }
+    }], getLayout());
+}
+    </script>
+</body>
+</html>
