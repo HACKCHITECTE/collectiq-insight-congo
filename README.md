@@ -2,7 +2,7 @@
 
 **CollectIQ** est une plateforme interactive de Business Intelligence (BI) conçue pour explorer et analyser le tissu entrepreneurial en République du Congo. Elle transforme des milliers de données brutes en insights exploitables pour les décideurs, les investisseurs et les professionnels du marketing.
 
-🚀 **[Voir la Démo en Direct](https://votre-pseudo.github.io/votre-depot/index.html)**
+🚀 **[Voir la Démo en Direct](https://hackchitecte.github.io/collectiq-insight-congo/)**
 
 ---
 
